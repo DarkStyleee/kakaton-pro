@@ -1,8 +1,7 @@
 <template>
-  <div>Home Page</div>
-  <ChatGame />
+  <KGame />
 </template>
 
 <script setup lang="ts">
-import ChatGame from '@/components/ChatGame.vue'
+import KGame from '@/components/KGame.vue'
 </script>
