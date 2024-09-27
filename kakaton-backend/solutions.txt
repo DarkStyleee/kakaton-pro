@@ -1,0 +1,5 @@
+function multiply(a, b) { return a * b; }
+class Car { constructor(make, model) { this.make = make; this.model = model; } }
+function capitalize(str) { return str.charAt(0).toUpperCase() + str.slice(1); }
+function factorial(n) { if (n === 0) return 1; return n * factorial(n - 1); }
+function findMax(arr) { return Math.max(...arr); }
