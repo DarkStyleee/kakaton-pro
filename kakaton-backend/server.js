@@ -13,6 +13,8 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000
 
+const DEFAULT_ROUND_TIMER = 10;
+
 const programmingTasks = [
   "Напишите функцию `multiply(a, b)`, которая возвращает произведение двух чисел.",
   "Создайте класс `Car` с конструктором, принимающим марку и модель.",
@@ -74,7 +76,8 @@ io.on('connection', (socket) => {
       currentTaskIndex: 0,
       gameActive: false,
       taskSolved: false,
-      roundTimer: null
+      roundTimer: null,
+      timeLeft: DEFAULT_ROUND_TIMER
     }
     io.to(roomId).emit('roomCreated', roomId)
     io.to(roomId).emit('currentPlayers', games[roomId].players)
@@ -108,12 +111,12 @@ io.on('connection', (socket) => {
     if (room && room.gameActive && !room.taskSolved) {
       const taskIndex = room.currentTaskIndex
       const currentTestCases = testCases[taskIndex]
-  
+
       const vm = new VM({
         timeout: 1000,
         sandbox: {}
       })
-  
+
       let userFunction
       try {
         vm.run(code)
@@ -141,14 +144,14 @@ io.on('connection', (socket) => {
         socket.emit('incorrectSolution', 'Ошибка при выполнении кода. Проверьте синтаксис.')
         return
       }
-  
+
       let allTestsPassed = true
       for (const testCase of currentTestCases) {
         try {
           const result = (taskIndex === 1) ?
               new userFunction(...testCase.args) :
               userFunction(...testCase.args)
-  
+
           if (taskIndex === 1) {
             if (result.make !== testCase.expected.make || result.model !== testCase.expected.model) {
               allTestsPassed = false
@@ -166,7 +169,7 @@ io.on('connection', (socket) => {
           break
         }
       }
-  
+
       if (allTestsPassed) {
         room.taskSolved = true
         const player = room.players.find(p => p.id === socket.id)
@@ -175,26 +178,34 @@ io.on('connection', (socket) => {
           io.to(roomId).emit('scoreUpdate', room.players.map(p => ({ name: p.name, score: p.score })))
           io.to(roomId).emit('taskSolved', { solver: player.name, code })
           console.log(`Игрок ${player.name} решил задание ${room.currentTaskIndex + 1} в комнате ${roomId}`)
-  
+
           if (player.score >= 3) {
             io.to(roomId).emit('gameEnded', { winner: player.name, scores: room.players.map(p => ({ name: p.name, score: p.score })) })
             delete games[roomId]
             console.log(`Игра в комнате ${roomId} завершена. Победитель: ${player.name}`)
-            clearTimeout(room.roundTimer)
+            clearInterval(room.roundTimer)
             return
           }
-  
+
           setTimeout(() => {
             if (room.currentTaskIndex < programmingTasks.length - 1) {
               room.currentTaskIndex += 1
               room.taskSolved = false
+              room.timeLeft = DEFAULT_ROUND_TIMER
               io.to(roomId).emit('newRound', { round: room.currentTaskIndex + 1 })
               io.to(roomId).emit('task', programmingTasks[room.currentTaskIndex])
               console.log(`Начался раунд ${room.currentTaskIndex + 1} в комнате ${roomId}`)
-  
-              room.roundTimer = setTimeout(() => {
-                endRound(roomId)
-              }, 2 * 60 * 1000)
+
+              clearInterval(room.roundTimer) // Очистка предыдущего интервала
+              room.roundTimer = setInterval(() => {
+                if (room.timeLeft > 0) {
+                  room.timeLeft -= 1
+                  io.to(roomId).emit('timerUpdate', room.timeLeft)
+                } else {
+                  clearInterval(room.roundTimer)
+                  endRound(roomId)
+                }
+              }, 1000)
             } else {
               endGame(roomId)
             }
@@ -219,7 +230,7 @@ io.on('connection', (socket) => {
         console.log(`Пользователь ${playerName} покинул комнату ${roomId}`)
 
         if (room.players.length === 0) {
-          clearTimeout(room.roundTimer)
+          clearInterval(room.roundTimer)
           delete games[roomId]
           console.log(`Комната ${roomId} удалена из-за отсутствия игроков`)
         }
@@ -236,14 +247,22 @@ function startGame(roomId) {
   room.gameActive = true
   room.currentTaskIndex = 0
   room.taskSolved = false
+  room.timeLeft = DEFAULT_ROUND_TIMER
   io.to(roomId).emit('gameStarted', { totalRounds: 5 })
   io.to(roomId).emit('newRound', { round: 1 })
   io.to(roomId).emit('task', programmingTasks[room.currentTaskIndex])
   console.log(`Игра в комнате ${roomId} началась`)
 
-  room.roundTimer = setTimeout(() => {
-    endRound(roomId)
-  }, 2 * 60 * 1000)
+  clearInterval(room.roundTimer)
+  room.roundTimer = setInterval(() => {
+    if (room.timeLeft > 0) {
+      room.timeLeft -= 1
+      io.to(roomId).emit('timerUpdate', room.timeLeft)
+    } else {
+      clearInterval(room.roundTimer)
+      endRound(roomId)
+    }
+  }, 1000)
 }
 
 function endRound(roomId) {
@@ -256,13 +275,21 @@ function endRound(roomId) {
   if (room.currentTaskIndex < programmingTasks.length - 1) {
     room.currentTaskIndex += 1
     room.taskSolved = false
+    room.timeLeft = DEFAULT_ROUND_TIMER
     io.to(roomId).emit('newRound', { round: room.currentTaskIndex + 1 })
     io.to(roomId).emit('task', programmingTasks[room.currentTaskIndex])
     console.log(`Начался раунд ${room.currentTaskIndex + 1} в комнате ${roomId}`)
 
-    room.roundTimer = setTimeout(() => {
-      endRound(roomId)
-    }, 2 * 60 * 1000)
+    clearInterval(room.roundTimer)
+    room.roundTimer = setInterval(() => {
+      if (room.timeLeft > 0) {
+        room.timeLeft -= 1
+        io.to(roomId).emit('timerUpdate', room.timeLeft)
+      } else {
+        clearInterval(room.roundTimer)
+        endRound(roomId)
+      }
+    }, 1000)
   } else {
     endGame(roomId)
   }
@@ -284,6 +311,7 @@ function endGame(roomId) {
   io.to(roomId).emit('gameEnded', { winner, scores: room.players.map(p => ({ name: p.name, score: p.score })) })
   console.log(`Игра в комнате ${roomId} завершена. Победитель: ${winner}`)
 
+  clearInterval(room.roundTimer)
   delete games[roomId]
 }
 

@@ -7,9 +7,7 @@
       <input v-model="roomId" placeholder="Введите ID комнаты" class="p-2 border rounded mb-2 w-full"/>
       <div class="flex justify-between">
         <button @click="createRoom" class="bg-green-500 text-white px-4 py-2 rounded">Создать комнату</button>
-        <button @click="joinRoom" class="bg-blue-500 text-white px-4 py-2 rounded ml-2">Присоединиться к
-          комнате
-        </button>
+        <button @click="joinRoom" class="bg-blue-500 text-white px-4 py-2 rounded ml-2">Присоединиться к комнате</button>
       </div>
     </div>
 
@@ -30,15 +28,17 @@
 
       <div v-else>
         <div v-if="currentRound">
-          <h2 class="text-2xl mb-2">Раунд {{ currentRound }}</h2>
+          <div class="flex justify-between">
+            <h2 class="text-2xl mb-2">Раунд {{ currentRound }}</h2>
+            <span class="text">Осталось: {{ timeLeft }} секунд</span>
+          </div>
+
           <p class="mb-4">{{ task }}</p>
 
           <div class="w-full h-60 border rounded mb-2">
             <MonacoEditor v-model:value="code" :options="editorOptions" language="javascript" theme="vs-dark"/>
           </div>
-          <button @click="submitCode" class="bg-purple-500 text-white px-4 py-2 rounded">Отправить
-            код
-          </button>
+          <button @click="submitCode" class="bg-purple-500 text-white px-4 py-2 rounded">Отправить код</button>
 
           <div class="mt-4">
             <h3 class="text-xl">Очки</h3>
@@ -52,9 +52,7 @@
 
         <div v-else>
           <p>Игра завершена! Победитель: {{ winner }}</p>
-          <button @click="leaveRoom" class="bg-red-500 text-white px-4 py-2 rounded mt-4">Выйти из
-            комнаты
-          </button>
+          <button @click="leaveRoom" class="bg-red-500 text-white px-4 py-2 rounded mt-4">Выйти из комнаты</button>
         </div>
       </div>
     </div>
@@ -79,6 +77,7 @@ const scores = ref<{ name: string, score: number }[]>([]);
 const winner = ref('');
 const players = ref<{ id: string, name: string, score: number }[]>([]);
 const socketId = ref(socket.id);
+const timeLeft = ref(0);
 
 const editorOptions = {
   selectOnLineNumbers: true,
@@ -122,7 +121,9 @@ socket.on('roomCreated', (id: string) => {
   console.log('Комната создана:', id);
   roomId.value = id;
   inRoom.value = true;
-  players.value = [{id: socket.id, name: userName.value, score: 0}];
+  if (socket.id) {
+    players.value = [{id: socket.id, name: userName.value, score: 0}];
+  }
 });
 
 socket.on('currentPlayers', (currentPlayers: { id: string, name: string, score: number }[]) => {
@@ -188,6 +189,11 @@ socket.on('gameEnded', (data: { winner: string, scores: { name: string, score: n
   scores.value = data.scores;
   currentRound.value = 0;
   toast.success(`Игра завершена! Победитель: ${winner.value}`);
+});
+
+socket.on('timerUpdate', (time: number) => {
+  console.log('Обновление таймера:', time);
+  timeLeft.value = time;
 });
 
 onUnmounted(() => {
